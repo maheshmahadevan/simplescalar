@@ -298,4 +298,11 @@ cache_flush_addr(struct cache_t *cp,	/* cache instance to flush */
 		 md_addr_t addr,	/* address of block to flush */
 		 tick_t now);		/* time of cache flush */
 
+/*HW3: */
+/*victim cache*/
+struct cache_t *cache_vc;
+
+/* level 1 data cache, entry level data cache */
+struct cache_t *cache_dl1;
+
 #endif /* CACHE_H */
