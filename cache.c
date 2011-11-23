@@ -570,18 +570,24 @@ cache_access(struct cache_t *cp,	/* cache to access */
 	/*if there is a miss , make access to Victim cache to check if it is there*/
 	if(strcmp(cp->name, cache_dl1->name) == 0)
 	{
-		cache_access(cache_vc, cmd, addr, NULL, nbytes, now, NULL, NULL);
+		lat += cache_access(cache_vc, cmd, addr, NULL, nbytes, now, NULL, NULL);
+		//Maheshma - need to check if it was hit or miss , if it was hit then return lat else update miss latency
+		if(lat != -1) // if latency is same as hit_latency then it was a hit, return lat for dl1
+		{
+			return lat;
+		}
 	}
 
 	/*HW3: */
 	/*if the cache is a victim cache, do nothing*/
 	if(strcmp(cp->name, cache_vc->name) == 0)
 	{
-		return lat;
+		return -1;
 	}
 
 	/* select the appropriate block to replace, and re-link this entry to
 	   the appropriate place in the way list */
+
 	switch (cp->policy) {
 	case LRU:
 	case FIFO:
