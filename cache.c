@@ -575,6 +575,7 @@ cache_access(struct cache_t *cp,	/* cache to access */
 		if(lat != -1) // if latency is same as hit_latency then it was a hit, return lat for dl1
 		{
 			return lat;
+
 		}
 	}
 
@@ -733,6 +734,7 @@ cache_hit: /* slow hit handler */
 	/* get user block data, if requested and it exists */
 	if (udata)
 		*udata = blk->user_data;
+
 
 	/* return first cycle data is available to access */
 	return (int) MAX(cp->hit_latency, (blk->ready - now));
