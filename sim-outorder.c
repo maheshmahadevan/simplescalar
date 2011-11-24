@@ -446,7 +446,11 @@ dl1_access_fn(enum mem_cmd cmd,		/* access cmd, Read or Write */
 /*HW3: */
 	if (cache_vc)
 	{
-		//lat = cache_access(cache_vc, cmd, baddr, NULL, bsize, now, NULL, NULL);
+		//maheshma - modified
+		lat = cache_access(cache_vc, cmd, baddr, NULL, bsize, now, NULL, NULL);
+		if (cmd == Read && lat !=0)
+			return lat;
+
 	}
 	if (cache_dl2)
 	{
