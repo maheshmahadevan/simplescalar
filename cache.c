@@ -383,6 +383,9 @@ cache_create(char *name,		/* name of the cache */
 			blk->ready = 0;
 			blk->user_data = (usize != 0
 			                  ? (byte_t *)calloc(usize, sizeof(byte_t)) : NULL);
+			//maheshma - implementing hit and sticky bit for SVC
+			blk->hit_bit = 0;
+			blk->sticky_bit = 0;
 
 			/* insert cache block into set hash table */
 			if (cp->hsize)
@@ -504,7 +507,8 @@ cache_access(struct cache_t *cp,	/* cache to access */
              int nbytes,		/* number of bytes to access */
              tick_t now,		/* time of access */
              byte_t **udata,		/* for return of user data ptr */
-             md_addr_t *repl_addr)	/* for address of replaced block */
+             md_addr_t *repl_addr,	/* for address of replaced block */
+             struct cache_blk_t *prev_blk)	/*maheshma - SVC - for previous block victim in l1 cache*/
 {
 	byte_t *p = vp;
 	md_addr_t tag = CACHE_TAG(cp, addr);
@@ -583,6 +587,7 @@ cache_access(struct cache_t *cp,	/* cache to access */
 	/*if the cache is a victim cache, do nothing*/
 	if(strcmp(cp->name, cache_vc->name) == 0)
 	{
+		//need to do the case3
 		return 0;
 	}
 
@@ -643,15 +648,25 @@ cache_access(struct cache_t *cp,	/* cache to access */
 
 /*HW3*/	
 	md_addr_t kick_out_data_addr = CACHE_MK_BADDR(cp, repl->tag, set);
-	
+	//maheshma - store the victim block
+	struct cache_blk_t *victim = repl;
+
 	/* update block tags */
 	repl->tag = tag;
 	repl->status = CACHE_BLK_VALID;	/* dirty bit set on update */
 
 	/* read data block */
-	lat += cp->blk_access_fn(Read, CACHE_BADDR(cp, addr), cp->bsize,
+	//maheshma - updating SVC code , send victim block instead of repl block if dl1 cache
+	if(strcmp(cp->name, cache_dl1->name) == 0)
+	{
+		lat += cp->blk_access_fn(Read, CACHE_BADDR(cp, addr), cp->bsize,
+			                         victim, now+lat);
+	}
+	else
+	{
+		lat += cp->blk_access_fn(Read, CACHE_BADDR(cp, addr), cp->bsize,
 	                         repl, now+lat);
-
+	}
 /*HW3, if cp is level 1 data cache, write the kicked out data to victim cache*/
 	if(strcmp(cp->name, cache_dl1->name) == 0)
 	{
@@ -701,12 +716,17 @@ cache_hit: /* slow hit handler */
   
 	/* **HIT** */
 	cp->hits++;
-
-	/*HW3: */
-	/*if the cache is a victim cache, do nothing*/
-//	if(strcmp(cp->name, cache_vc->name) == 0)
+	//maheshma - Implementing SVC case 1 hit in main cache
+	if(strcmp(cp->name, cache_dl1->name) == 0)
 	{
-//		return lat;
+		blk->hit_bit = 1;
+		blk->sticky_bit = 1;
+	}
+
+	/*maheshma - case 2*/
+	if(strcmp(cp->name, cache_vc->name) == 0)
+	{
+		//need to do the swap
 	}
 
 	/* copy data out of cache block, if block exists */

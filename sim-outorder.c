@@ -447,7 +447,7 @@ dl1_access_fn(enum mem_cmd cmd,		/* access cmd, Read or Write */
 	if (cache_vc)
 	{
 		//maheshma - modified
-		lat = cache_access(cache_vc, cmd, baddr, NULL, bsize, now, NULL, NULL);
+		lat = cache_access(cache_vc, cmd, baddr, NULL, bsize, now, NULL, NULL,blk);
 		if (cmd == Read && lat !=0)
 			return lat;
 
@@ -456,7 +456,7 @@ dl1_access_fn(enum mem_cmd cmd,		/* access cmd, Read or Write */
 	{
 		/* access next level of data cache hierarchy */
 		lat = cache_access(cache_dl2, cmd, baddr, NULL, bsize,
-		                   /* now */now, /* pudata */NULL, /* repl addr */NULL);
+		                   /* now */now, /* pudata */NULL, /* repl addr */NULL,NULL);
 		if (cmd == Read)
 			return lat;
 		else
@@ -510,7 +510,7 @@ il1_access_fn(enum mem_cmd cmd,		/* access cmd, Read or Write */
 	{
 		/* access next level of inst cache hierarchy */
 		lat = cache_access(cache_il2, cmd, baddr, NULL, bsize,
-		                   /* now */now, /* pudata */NULL, /* repl addr */NULL);
+		                   /* now */now, /* pudata */NULL, /* repl addr */NULL,NULL);
 		if (cmd == Read)
 			return lat;
 		else
@@ -1036,7 +1036,7 @@ sim_check_options(struct opt_odb_t *odb,        /* options database */
 		                         /* usize */0, assoc, cache_char2policy(c),
 		                         dl1_access_fn, /* hit lat */cache_dl1_lat);
 		/*HW3: */
-		cache_vc = cache_create("victim_cache", 2, bsize, FALSE, 0, 2, cache_char2policy('l'), vc_access_fn, cache_dl1_lat);
+		cache_vc = cache_create("victim_cache", 4, bsize, FALSE, 0, 4, cache_char2policy('l'), vc_access_fn, cache_dl1_lat);
 
 		                        /* is the level 2 D-cache defined? */
 		                        if (!mystricmp(cache_dl2_opt, "none"))
@@ -2211,7 +2211,7 @@ sim_check_options(struct opt_odb_t *odb,        /* options database */
 							/* commit store value to D-cache */
 							lat =
 								cache_access(cache_dl1, Write, (LSQ[LSQ_head].addr&~3),
-								             NULL, 4, sim_cycle, NULL, NULL);
+								             NULL, 4, sim_cycle, NULL, NULL,NULL);
 							if (lat > cache_dl1_lat)
 								events |= PEV_CACHEMISS;
 						}
@@ -2222,7 +2222,7 @@ sim_check_options(struct opt_odb_t *odb,        /* options database */
 							/* access the D-TLB */
 							lat =
 								cache_access(dtlb, Read, (LSQ[LSQ_head].addr & ~3),
-								             NULL, 4, sim_cycle, NULL, NULL);
+								             NULL, 4, sim_cycle, NULL, NULL,NULL);
 							if (lat > 1)
 								events |= PEV_TLBMISS;
 						}
@@ -2757,7 +2757,7 @@ sim_check_options(struct opt_odb_t *odb,        /* options database */
 										load_lat =
 											cache_access(cache_dl1, Read,
 											             (rs->addr & ~3), NULL, 4,
-											             sim_cycle, NULL, NULL);
+											             sim_cycle, NULL, NULL,NULL);
 										if (load_lat > cache_dl1_lat)
 											events |= PEV_CACHEMISS;
 									}
@@ -2775,7 +2775,7 @@ sim_check_options(struct opt_odb_t *odb,        /* options database */
 									   initiate speculative TLB misses */
 									tlb_lat =
 										cache_access(dtlb, Read, (rs->addr & ~3),
-										             NULL, 4, sim_cycle, NULL, NULL);
+										             NULL, 4, sim_cycle, NULL, NULL,NULL);
 									if (tlb_lat > 1)
 										events |= PEV_TLBMISS;
 
@@ -4257,7 +4257,7 @@ sim_check_options(struct opt_odb_t *odb,        /* options database */
 					lat =
 						cache_access(cache_il1, Read, IACOMPRESS(fetch_regs_PC),
 						             NULL, ISCOMPRESS(sizeof(md_inst_t)), sim_cycle,
-						             NULL, NULL);
+						             NULL, NULL,NULL);
 					if (lat > cache_il1_lat)
 						last_inst_missed = TRUE;
 				}
@@ -4269,7 +4269,7 @@ sim_check_options(struct opt_odb_t *odb,        /* options database */
 					tlb_lat =
 						cache_access(itlb, Read, IACOMPRESS(fetch_regs_PC),
 						             NULL, ISCOMPRESS(sizeof(md_inst_t)), sim_cycle,
-						             NULL, NULL);
+						             NULL, NULL,NULL);
 					if (tlb_lat > 1)
 						last_inst_tmissed = TRUE;
 

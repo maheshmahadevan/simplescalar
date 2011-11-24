@@ -130,6 +130,9 @@ struct cache_blk_t
      defined in this structure! */
   byte_t data[1];		/* actual data block starts here, block size
 				   should probably be a multiple of 8 */
+  //maheshma-Defining hit and sticky bit for SVC
+  int hit_bit;
+  int sticky_bit;
 };
 
 /* cache set definition (one or more blocks sharing the same set index) */
@@ -262,7 +265,8 @@ cache_access(struct cache_t *cp,	/* cache to access */
 	     int nbytes,		/* number of bytes to access */
 	     tick_t now,		/* time of access */
 	     byte_t **udata,		/* for return of user data ptr */
-	     md_addr_t *repl_addr);	/* for address of replaced block */
+	     md_addr_t *repl_addr,	/* for address of replaced block */
+	     struct cache_blk_t *prev_blk); /*maheshma - SVC - for previous block victim in l1 cache*/
 
 /* cache access functions, these are safe, they check alignment and
    permissions */
