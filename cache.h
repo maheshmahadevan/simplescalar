@@ -133,6 +133,7 @@ struct cache_blk_t
   //maheshma-Defining hit and sticky bit for SVC
   int hit_bit;
   int sticky_bit;
+  int updated; //to check if this block has been already replaced.
 };
 
 /* cache set definition (one or more blocks sharing the same set index) */
@@ -174,7 +175,8 @@ struct cache_t
 		     md_addr_t baddr,		/* program address to access */
 		     int bsize,			/* size of the cache block */
 		     struct cache_blk_t *blk,	/* ptr to cache block struct */
-		     tick_t now);		/* when fetch was initiated */
+		     tick_t now,			/* when fetch was initiated */
+		     md_addr_t* prev_addr);		/* maheshma - address of prev level cache*/
 
   /* derived data, for fast decoding */
   int hsize;			/* cache set hash table size */
@@ -227,7 +229,7 @@ cache_create(char *name,		/* name of the cache */
 	     unsigned int (*blk_access_fn)(enum mem_cmd cmd,
 					   md_addr_t baddr, int bsize,
 					   struct cache_blk_t *blk,
-					   tick_t now),
+					   tick_t now, md_addr_t* prev_addr),
 	     unsigned int hit_latency);/* latency in cycles for a hit */
 
 /* parse policy */
@@ -308,5 +310,16 @@ struct cache_t *cache_vc;
 
 /* level 1 data cache, entry level data cache */
 struct cache_t *cache_dl1;
+
+/* maheshma - level 2 data cache, entry level data cache */
+struct cache_t *cache_dl2;
+
+/* level 1 insn cache, entry level data cache */
+struct cache_t *cache_il1;
+
+
+
+/*maheshma - SVC code - method to interchange blocks between 2 caches*/
+void move(md_addr_t addr/*Address to be moved*/, struct cache_blk_t *blk, struct cache_t *cp /*pointer to second cache*/);
 
 #endif /* CACHE_H */

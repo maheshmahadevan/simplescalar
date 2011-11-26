@@ -164,6 +164,9 @@ static char *cache_dl1_opt;
 /* l1 data cache hit latency (in cycles) */
 static int cache_dl1_lat;
 
+/*maheshma - implementing optional text for victim cache*/
+static char *cache_vc_opt;
+
 /* l2 data cache config, i.e., {<config>|none} */
 static char *cache_dl2_opt;
 
@@ -369,13 +372,15 @@ static char *bpred_spec_opt;
 static enum { spec_ID, spec_WB, spec_CT } bpred_spec_update;
 
 /* level 1 instruction cache, entry level instruction cache */
-static struct cache_t *cache_il1;
+//maheshma - commented for svc implementation
+//static struct cache_t *cache_il1;
 
 /* level 1 instruction cache */
 static struct cache_t *cache_il2;
 
 /* level 2 data cache */
-static struct cache_t *cache_dl2;
+//maheshma - commented for svc implementation
+//static struct cache_t *cache_dl2;
 
 /* instruction TLB */
 static struct cache_t *itlb;
@@ -424,7 +429,8 @@ vc_access_fn(enum mem_cmd cmd,
              md_addr_t baddr,
              int bsize,
              struct cache_blk_t *blk,
-             tick_t now)
+             tick_t now,				/* time of access */
+             md_addr_t* prev_addr)		/* maheshma - address of prev level cache*/
 {
 	return 0;
 }
@@ -439,15 +445,17 @@ dl1_access_fn(enum mem_cmd cmd,		/* access cmd, Read or Write */
               md_addr_t baddr,		/* block address to access */
               int bsize,		/* size of block to access */
               struct cache_blk_t *blk,	/* ptr to block in upper level */
-              tick_t now)		/* time of access */
+              tick_t now,				/* time of access */
+              md_addr_t *prev_addr)		/* maheshma - address of prev level cache*/
 {
 	unsigned int lat;
 
 /*HW3: */
-	if (cache_vc)
+	/*Only need to access Victim cache when need to read and during WriteBack*/
+	if (cache_vc && cmd == Read )
 	{
 		//maheshma - modified
-		lat = cache_access(cache_vc, cmd, baddr, NULL, bsize, now, NULL, NULL,blk);
+		lat = cache_access(cache_vc, cmd, baddr, NULL, bsize, now, NULL, prev_addr,blk);
 		if (cmd == Read && lat !=0)
 			return lat;
 
@@ -455,8 +463,9 @@ dl1_access_fn(enum mem_cmd cmd,		/* access cmd, Read or Write */
 	if (cache_dl2)
 	{
 		/* access next level of data cache hierarchy */
+		//maheshma - sending address and block from higher level cache to lower cache for comparison
 		lat = cache_access(cache_dl2, cmd, baddr, NULL, bsize,
-		                   /* now */now, /* pudata */NULL, /* repl addr */NULL,NULL);
+		                   /* now */now, /* pudata */NULL, /* repl addr */prev_addr,blk);
 		if (cmd == Read)
 			return lat;
 		else
@@ -484,7 +493,8 @@ dl2_access_fn(enum mem_cmd cmd,		/* access cmd, Read or Write */
               md_addr_t baddr,		/* block address to access */
               int bsize,		/* size of block to access */
               struct cache_blk_t *blk,	/* ptr to block in upper level */
-              tick_t now)		/* time of access */
+              tick_t now,				/* time of access */
+              md_addr_t* prev_addr)		/* maheshma - address of prev level cache*/
 {
 	/* this is a miss to the lowest level, so access main memory */
 	if (cmd == Read)
@@ -502,13 +512,15 @@ il1_access_fn(enum mem_cmd cmd,		/* access cmd, Read or Write */
               md_addr_t baddr,		/* block address to access */
               int bsize,		/* size of block to access */
               struct cache_blk_t *blk,	/* ptr to block in upper level */
-              tick_t now)		/* time of access */
+              tick_t now,				/* time of access */
+              md_addr_t* prev_addr)		/* maheshma - address of prev level cache*/
 {
 	unsigned int lat;
 
 	if (cache_il2)
 	{
 		/* access next level of inst cache hierarchy */
+		//maheshma - changes made to avoid seg fault
 		lat = cache_access(cache_il2, cmd, baddr, NULL, bsize,
 		                   /* now */now, /* pudata */NULL, /* repl addr */NULL,NULL);
 		if (cmd == Read)
@@ -532,7 +544,8 @@ il2_access_fn(enum mem_cmd cmd,		/* access cmd, Read or Write */
               md_addr_t baddr,		/* block address to access */
               int bsize,		/* size of block to access */
               struct cache_blk_t *blk,	/* ptr to block in upper level */
-              tick_t now)		/* time of access */
+              tick_t now,				/* time of access */
+              md_addr_t* prev_addr)		/* maheshma - address of prev level cache*/
 {
 	/* this is a miss to the lowest level, so access main memory */
 	if (cmd == Read)
@@ -552,7 +565,8 @@ itlb_access_fn(enum mem_cmd cmd,	/* access cmd, Read or Write */
                md_addr_t baddr,		/* block address to access */
                int bsize,		/* size of block to access */
                struct cache_blk_t *blk,	/* ptr to block in upper level */
-               tick_t now)		/* time of access */
+               tick_t now,				/* time of access */
+               md_addr_t* prev_addr)		/* maheshma - address of prev level cache*/
 {
 	md_addr_t *phy_page_ptr = (md_addr_t *)blk->user_data;
 
@@ -572,7 +586,8 @@ dtlb_access_fn(enum mem_cmd cmd,	/* access cmd, Read or Write */
                md_addr_t baddr,	/* block address to access */
                int bsize,		/* size of block to access */
                struct cache_blk_t *blk,	/* ptr to block in upper level */
-               tick_t now)		/* time of access */
+               tick_t now,				/* time of access */
+               md_addr_t* prev_addr)		/* maheshma - address of prev level cache*/
 {
 	md_addr_t *phy_page_ptr = (md_addr_t *)blk->user_data;
 
@@ -777,6 +792,12 @@ sim_reg_options(struct opt_odb_t *odb)
 	            "l1 data cache hit latency (in cycles)",
 	            &cache_dl1_lat, /* default */1,
 	            /* print */TRUE, /* format */NULL);
+
+	/*maheshma - optional config for victim cache*/
+	opt_reg_string(odb, "-cache:victim_cache",
+		               "Victim cache data cache config, i.e., ex: victim_cache:2:32:2:l {<config>|none}",
+		               &cache_vc_opt, "none",
+		               /* print */TRUE, NULL);
 
 	opt_reg_string(odb, "-cache:dl2",
 	               "l2 data cache config, i.e., {<config>|none}",
@@ -1026,6 +1047,11 @@ sim_check_options(struct opt_odb_t *odb,        /* options database */
 		if (strcmp(cache_dl2_opt, "none"))
 			fatal("the l1 data cache must defined if the l2 cache is defined");
 		cache_dl2 = NULL;
+
+		/*maheshma - Victim cache cannot be defined if l1 is not*/
+		if (strcmp(cache_vc_opt, "none"))
+					fatal("the l1 data cache must defined if the victim cache cache is defined");
+		cache_vc = NULL;
 	}
 	else /* dl1 is defined */
 	{
@@ -1036,8 +1062,16 @@ sim_check_options(struct opt_odb_t *odb,        /* options database */
 		                         /* usize */0, assoc, cache_char2policy(c),
 		                         dl1_access_fn, /* hit lat */cache_dl1_lat);
 		/*HW3: */
-		cache_vc = cache_create("victim_cache", 4, bsize, FALSE, 0, 4, cache_char2policy('l'), vc_access_fn, cache_dl1_lat);
-
+		 if (!mystricmp(cache_vc_opt, "none"))
+			cache_vc = NULL;
+		else {
+			if (sscanf(cache_vc_opt, "%[^:]:%d:%d:%d:%c", name, &nsets, &bsize,
+					&assoc, &c) != 5)
+				fatal("bad victim cache parms: "
+				"<name>:<nsets>:<bsize>:<assoc>:<repl>");
+			cache_vc = cache_create(name, nsets, bsize, FALSE, 0, assoc,
+					cache_char2policy(c), vc_access_fn, cache_dl1_lat);
+		}
 		                        /* is the level 2 D-cache defined? */
 		                        if (!mystricmp(cache_dl2_opt, "none"))
 			                        cache_dl2 = NULL;
@@ -1328,7 +1362,11 @@ sim_check_options(struct opt_odb_t *odb,        /* options database */
 		{
 			cache_reg_stats(cache_dl1, sdb);
 			/*HW3: */
-			cache_reg_stats(cache_vc, sdb);
+			/*maheshma - update to check if cache vc exists*/
+			if(cache_vc)
+			{
+				cache_reg_stats(cache_vc, sdb);
+			}
 		}
 		if (cache_dl2)
 			cache_reg_stats(cache_dl2, sdb);
