@@ -67,6 +67,9 @@
 /* verbose output flag */
 int verbose = FALSE;
 
+/*maheshma - flag for selective victim cache*/
+int selective_vc = FALSE;
+
 #ifdef DEBUG
 /* active debug flag */
 int debugging = FALSE;

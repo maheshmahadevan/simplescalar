@@ -255,6 +255,9 @@ main(int argc, char **argv, char **envp)
 	       &help_me, /* default */FALSE, /* !print */FALSE, NULL);
   opt_reg_flag(sim_odb, "-v", "verbose operation",
 	       &verbose, /* default */FALSE, /* !print */FALSE, NULL);
+
+
+
 #ifdef DEBUG
   opt_reg_flag(sim_odb, "-d", "enable debug message",
 	       &debugging, /* default */FALSE, /* !print */FALSE, NULL);

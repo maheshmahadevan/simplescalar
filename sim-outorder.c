@@ -223,6 +223,8 @@ static int res_fpalu;
 /* total number of floating point multiplier/dividers available */
 static int res_fpmult;
 
+
+
 /* text-based stat profiles */
 #define MAX_PCSTAT_VARS 8
 static int pcstat_nelt = 0;
@@ -376,7 +378,8 @@ static enum { spec_ID, spec_WB, spec_CT } bpred_spec_update;
 //static struct cache_t *cache_il1;
 
 /* level 1 instruction cache */
-static struct cache_t *cache_il2;
+//maheshma - commented for svc implementation
+//static struct cache_t *cache_il2;
 
 /* level 2 data cache */
 //maheshma - commented for svc implementation
@@ -452,10 +455,10 @@ dl1_access_fn(enum mem_cmd cmd,		/* access cmd, Read or Write */
 
 /*HW3: */
 	/*Only need to access Victim cache when need to read and during WriteBack*/
-	if (cache_vc && cmd == Read )
+	if (cache_dvc && cmd == Read )
 	{
 		//maheshma - modified
-		lat = cache_access(cache_vc, cmd, baddr, NULL, bsize, now, NULL, prev_addr,blk);
+		lat = cache_access(cache_dvc, cmd, baddr, NULL, bsize, now, NULL, prev_addr,blk);
 		if (cmd == Read && lat !=0)
 			return lat;
 
@@ -517,12 +520,22 @@ il1_access_fn(enum mem_cmd cmd,		/* access cmd, Read or Write */
 {
 	unsigned int lat;
 
+	/*Only need to access Victim cache when need to read and during WriteBack*/
+	if (cache_ivc && cmd == Read )
+	{
+		//maheshma - modified
+		lat = cache_access(cache_ivc, cmd, baddr, NULL, bsize, now, NULL, prev_addr,blk);
+		if (cmd == Read && lat !=0)
+			return lat;
+
+	}
+
 	if (cache_il2)
 	{
 		/* access next level of inst cache hierarchy */
 		//maheshma - changes made to avoid seg fault
 		lat = cache_access(cache_il2, cmd, baddr, NULL, bsize,
-		                   /* now */now, /* pudata */NULL, /* repl addr */NULL,NULL);
+		                   /* now */now, /* pudata */NULL, /* repl addr */prev_addr,blk);
 		if (cmd == Read)
 			return lat;
 		else
@@ -798,10 +811,10 @@ sim_reg_options(struct opt_odb_t *odb)
 		               "Victim cache data cache config, i.e., ex: victim_cache:2:32:2:l {<config>|none}",
 		               &cache_vc_opt, "none",
 		               /* print */TRUE, NULL);
-
+//maheshma - updated dl2 cache default
 	opt_reg_string(odb, "-cache:dl2",
 	               "l2 data cache config, i.e., {<config>|none}",
-	               &cache_dl2_opt, "ul2:1024:64:4:l",
+	               &cache_dl2_opt, "dl2:1024:64:4:l"/*"ul2:1024:64:4:l"*/,
 	               /* print */TRUE, NULL);
 
 	opt_reg_int(odb, "-cache:dl2lat",
@@ -832,10 +845,10 @@ sim_reg_options(struct opt_odb_t *odb)
 	            "l1 instruction cache hit latency (in cycles)",
 	            &cache_il1_lat, /* default */1,
 	            /* print */TRUE, /* format */NULL);
-
+//maheshma - updated il2 cache default
 	opt_reg_string(odb, "-cache:il2",
 	               "l2 instruction cache config, i.e., {<config>|dl2|none}",
-	               &cache_il2_opt, "dl2",
+	               &cache_il2_opt, "il2:1024:64:4:l"/* "dl2"*/,
 	               /* print */TRUE, NULL);
 
 	opt_reg_int(odb, "-cache:il2lat",
@@ -850,6 +863,12 @@ sim_reg_options(struct opt_odb_t *odb)
 	             "convert 64-bit inst addresses to 32-bit inst equivalents",
 	             &compress_icache_addrs, /* default */FALSE,
 	             /* print */TRUE, NULL);
+
+	/*maheshma - flag for optional Selective Victim cache*/
+	opt_reg_flag(odb, "-selective_vc",
+		             "flag to turn on selective victim cache",
+		             &selective_vc, /* default */FALSE,
+		             /* print */TRUE, NULL);
 
 	/* mem options */
 	opt_reg_int_list(odb, "-mem:lat",
@@ -1051,7 +1070,8 @@ sim_check_options(struct opt_odb_t *odb,        /* options database */
 		/*maheshma - Victim cache cannot be defined if l1 is not*/
 		if (strcmp(cache_vc_opt, "none"))
 					fatal("the l1 data cache must defined if the victim cache cache is defined");
-		cache_vc = NULL;
+		cache_dvc = NULL;
+		selective_vc = FALSE;// cannot have selective vc if vc is not there
 	}
 	else /* dl1 is defined */
 	{
@@ -1063,13 +1083,19 @@ sim_check_options(struct opt_odb_t *odb,        /* options database */
 		                         dl1_access_fn, /* hit lat */cache_dl1_lat);
 		/*HW3: */
 		 if (!mystricmp(cache_vc_opt, "none"))
-			cache_vc = NULL;
+		 {
+			cache_dvc = NULL;
+		 	selective_vc = FALSE;// cannot have selective vc if vc is not there
+		 }
 		else {
 			if (sscanf(cache_vc_opt, "%[^:]:%d:%d:%d:%c", name, &nsets, &bsize,
 					&assoc, &c) != 5)
 				fatal("bad victim cache parms: "
 				"<name>:<nsets>:<bsize>:<assoc>:<repl>");
-			cache_vc = cache_create(name, nsets, bsize, FALSE, 0, assoc,
+			char str[50];
+			strcpy(str,"data_");
+			strcat(str,name);
+			cache_dvc = cache_create(str, nsets, bsize, FALSE, 0, assoc,
 					cache_char2policy(c), vc_access_fn, cache_dl1_lat);
 		}
 		                        /* is the level 2 D-cache defined? */
@@ -1096,6 +1122,12 @@ sim_check_options(struct opt_odb_t *odb,        /* options database */
 				if (strcmp(cache_il2_opt, "none"))
 					fatal("the l1 inst cache must defined if the l2 cache is defined");
 				cache_il2 = NULL;
+
+				/*maheshma - Victim cache cannot be defined if l1 is not*/
+				if (strcmp(cache_vc_opt, "none"))
+					fatal("the l1 insn cache must defined if the victim cache cache is defined");
+				cache_ivc = NULL;
+				selective_vc = FALSE;// cannot have selective vc if vc is not there
 			}
 			else if (!mystricmp(cache_il1_opt, "dl1"))
 			{
@@ -1107,6 +1139,12 @@ sim_check_options(struct opt_odb_t *odb,        /* options database */
 				if (strcmp(cache_il2_opt, "none"))
 					fatal("the l1 inst cache must defined if the l2 cache is defined");
 				cache_il2 = NULL;
+
+				/*maheshma - Victim cache cannot be defined if l1 is not*/
+				if (strcmp(cache_vc_opt, "none"))
+					fatal("the l1 insn cache must defined if the victim cache cache is defined");
+				cache_ivc = NULL;
+				selective_vc = FALSE;// cannot have selective vc if vc is not there
 			}
 			else if (!mystricmp(cache_il1_opt, "dl2"))
 			{
@@ -1118,6 +1156,12 @@ sim_check_options(struct opt_odb_t *odb,        /* options database */
 				if (strcmp(cache_il2_opt, "none"))
 					fatal("the l1 inst cache must defined if the l2 cache is defined");
 				cache_il2 = NULL;
+
+				/*maheshma - Victim cache cannot be defined if l1 is not*/
+				if (strcmp(cache_vc_opt, "none"))
+					fatal("the l1 insn cache must defined if the victim cache cache is defined");
+				cache_ivc = NULL;
+				selective_vc = FALSE;// cannot have selective vc if vc is not there
 			}
 			else /* il1 is defined */
 			{
@@ -1127,6 +1171,23 @@ sim_check_options(struct opt_odb_t *odb,        /* options database */
 				cache_il1 = cache_create(name, nsets, bsize, /* balloc */FALSE,
 				                         /* usize */0, assoc, cache_char2policy(c),
 				                         il1_access_fn, /* hit lat */cache_il1_lat);
+				/*HW3: */
+		if (!mystricmp(cache_vc_opt, "none"))
+		{
+			cache_ivc = NULL;
+			selective_vc = FALSE;// cannot have selective vc if vc is not there
+		}
+		else {
+			if (sscanf(cache_vc_opt, "%[^:]:%d:%d:%d:%c", name, &nsets, &bsize,
+					&assoc, &c) != 5)
+				fatal("bad victim cache parms: "
+				"<name>:<nsets>:<bsize>:<assoc>:<repl>");
+			char str[50];
+			strcpy(str,"insn_");
+			strcat(str,name);
+			cache_ivc = cache_create(str, nsets, bsize, FALSE, 0,
+					assoc, cache_char2policy(c), vc_access_fn, cache_dl1_lat);
+		}
 
 				/* is the level 2 D-cache defined? */
 				if (!mystricmp(cache_il2_opt, "none"))
@@ -1354,7 +1415,15 @@ sim_check_options(struct opt_odb_t *odb,        /* options database */
 		/* register cache stats */
 		if (cache_il1
 		    && (cache_il1 != cache_dl1 && cache_il1 != cache_dl2))
+		{
 			cache_reg_stats(cache_il1, sdb);
+			/*maheshma - update to check insn vc exists*/
+			if (cache_ivc)
+			{
+			cache_reg_stats(cache_ivc, sdb);
+			}
+
+		}
 		if (cache_il2
 		    && (cache_il2 != cache_dl1 && cache_il2 != cache_dl2))
 			cache_reg_stats(cache_il2, sdb);
@@ -1362,10 +1431,10 @@ sim_check_options(struct opt_odb_t *odb,        /* options database */
 		{
 			cache_reg_stats(cache_dl1, sdb);
 			/*HW3: */
-			/*maheshma - update to check if cache vc exists*/
-			if(cache_vc)
+			/*maheshma - update to check if data vc exists*/
+			if(cache_dvc)
 			{
-				cache_reg_stats(cache_vc, sdb);
+				cache_reg_stats(cache_dvc, sdb);
 			}
 		}
 		if (cache_dl2)

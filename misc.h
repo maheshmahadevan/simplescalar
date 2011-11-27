@@ -88,6 +88,9 @@
 /* verbose output flag */
 extern int verbose;
 
+/*maheshma - flag for selective victim cache*/
+extern int selective_vc;
+
 #ifdef DEBUG
 /* active debug flag */
 extern int debugging;

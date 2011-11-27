@@ -499,6 +499,16 @@ struct cache_blk_t *prev_blk) /*maheshma - SVC - for previous block victim in l1
 	/*if (repl_addr)
 	 *repl_addr = 0;*/
 
+	//maheshma - initialize cache_vc
+	struct cache_t *cache_vc,*cache_l1;
+	if (strcmp(cp->name, cache_dl1->name) == 0 || (cache_dl2 && strcmp(cp->name, cache_dl2->name) == 0) || (cache_dvc && strcmp(cp->name, cache_dvc->name) == 0)) {
+		cache_vc = cache_dvc;
+		cache_l1 = cache_dl1;
+	} else if (strcmp(cp->name, cache_il1->name) == 0 || (cache_il2 && strcmp(cp->name, cache_il2->name) == 0) || (cache_ivc && strcmp(cp->name, cache_ivc->name) == 0)) {
+		cache_vc = cache_ivc;
+		cache_l1 = cache_il1;
+	}
+
 	/* check alignments */
 	if ((nbytes & (nbytes - 1)) != 0 || (addr & (nbytes - 1)) != 0)
 		fatal("cache: access error: bad size or alignment, addr 0x%08x", addr);
@@ -519,7 +529,7 @@ struct cache_blk_t *prev_blk) /*maheshma - SVC - for previous block victim in l1
 	}
 
 	/*maheshma - keep Victim cache always associative and not set hsize*/
-	if (cache_vc && strcmp(cp->name, cache_vc->name) == 0) {
+	if ((cache_dvc && strcmp(cp->name, cache_dvc->name) == 0) || (cache_ivc && strcmp(cp->name, cache_ivc->name) == 0)) {
 		cp->hsize = 0;
 	}
 
@@ -558,7 +568,7 @@ struct cache_blk_t *prev_blk) /*maheshma - SVC - for previous block victim in l1
 
 	/*HW3: */
 	/*if the cache is a victim cache, do nothing*/
-	if (cache_vc && strcmp(cp->name, cache_vc->name) == 0) {
+	if ((cache_dvc && strcmp(cp->name, cache_dvc->name) == 0) || (cache_ivc && strcmp(cp->name, cache_ivc->name) == 0)) {
 		//need to do the case3
 		return 0;
 	}
@@ -621,12 +631,60 @@ struct cache_blk_t *prev_blk) /*maheshma - SVC - for previous block victim in l1
 	//maheshma - store the victim block copy
 	struct cache_blk_t *victim = repl;
 	//maheshma - Updated for SVC , will call block_access_fn with Kicked out block in case of dl1 caches.
-	if (strcmp(cp->name, cache_dl1->name) == 0 || strcmp(cp->name, cache_il1->name) == 0) {
+	if (strcmp(cp->name, cache_dl1->name) == 0 || strcmp(cp->name, cache_dl2->name) == 0  || strcmp(cp->name, cache_il1->name) == 0 ||  strcmp(cp->name, cache_il2->name) == 0) {
 		//maheshma - SVC code - updated args list to send kicked out address to block access function so it can be sent to lower
 		//level cache_access calls
 		lat += cp->blk_access_fn(Read, CACHE_BADDR(cp, addr), cp->bsize, victim,
 				now + lat, &kick_out_data_addr);
 	}
+
+	//maheshma - implementing case 3 for dl2 misses as well - test now to see if miss numbers reduce..
+
+	if (selective_vc && cmd == Read &&(strcmp(cp->name, cache_dl2->name) == 0 || strcmp(cp->name, cache_il2->name) == 0)) {
+				if (prev_blk->sticky_bit == 0) {
+					//move alpha to victim cache
+					// Need to find the right block in vc first
+					md_addr_t repl_set = CACHE_SET(cache_vc, *repl_addr);
+					struct cache_blk_t *blk_vc = cache_vc->sets[repl_set].way_tail;
+					move(*repl_addr, blk_vc, cache_vc);
+					//transfer beta to main cache
+					//should have right blk pointer from main cache in prev_blk
+					move(addr, prev_blk, cache_l1);
+					prev_blk->sticky_bit = 1;
+					prev_blk->hit_bit = 1;
+
+				} else {
+					//maheshma - no need for this block as there is no blk or hit bit in main memory all hit bits are 0
+					/*if (blk->hit_bit == 0) {*/
+						//transfer beta to victim cache
+						// Need to find the right block in vc first
+						md_addr_t repl_set = CACHE_SET(cache_vc, addr);
+						struct cache_blk_t *blk_vc =
+								cache_vc->sets[repl_set].way_tail;
+						//shd write back after this
+						move(addr, blk_vc, cache_vc);
+						prev_blk->sticky_bit = 0;
+						prev_blk->updated=1;// need to update so that after call back tag is not replaced and/or moved to VC.
+					//} //maheshma - commenting this part as there is no hit bit in main memory
+					/*else {
+						//move alpha to victim cache
+						// Need to find the right block in vc first
+						md_addr_t repl_set = CACHE_SET(cache_vc, *repl_addr);
+						struct cache_blk_t *blk_vc =
+								cache_vc->sets[repl_set].way_tail;
+						//shd write back after this
+						move(*repl_addr, blk_vc, cache_vc);
+						//transfer beta to main cache
+						//should have right blk pointer from main cache in prev_blk
+						move(addr, prev_blk, cache_l1);
+						prev_blk->sticky_bit = 1;
+						prev_blk->hit_bit = 0;
+
+					}*/
+				}
+			}
+
+
 	//Need to update
 	//maheshma - Quote to self this is where the swap of blocks take place...
 	/* update block tags */
@@ -639,13 +697,13 @@ struct cache_blk_t *prev_blk) /*maheshma - SVC - for previous block victim in l1
 
 	/* read data block */
 	//maheshma - updating SVC code , calling the normal block access fn with repl block when it is not dl1 cache
-	if (strcmp(cp->name, cache_dl1->name) != 0 && strcmp(cp->name, cache_il1->name) != 0) {
+	if (strcmp(cp->name, cache_dl1->name) != 0 && strcmp(cp->name, cache_dl2->name) != 0 && strcmp(cp->name, cache_il1->name) != 0 && strcmp(cp->name, cache_il2->name) != 0) {
 		lat += cp->blk_access_fn(Read, CACHE_BADDR(cp, addr), cp->bsize, repl,
 				now + lat, NULL);
 	}
 	/*HW3, if cp is level 1 data cache, write the kicked out data to victim cache*/
-	if (cache_vc && strcmp(cp->name, cache_dl1->name) == 0 && repl->updated==0) {
-//		md_addr_t set_vc = CACHE_SET(cache_vc, addr);
+	if (((cache_dvc && strcmp(cp->name, cache_dl1->name) == 0) || (cache_ivc && strcmp(cp->name, cache_il1->name) == 0)) && repl->updated==0) {
+
 		md_addr_t tag_vc = CACHE_TAG(cache_vc, kick_out_data_addr);
 		md_addr_t set_vc = CACHE_SET(cache_vc, kick_out_data_addr);
 		struct cache_blk_t *repl_vc;
@@ -685,7 +743,7 @@ struct cache_blk_t *prev_blk) /*maheshma - SVC - for previous block victim in l1
 
 	//maheshma - if cache is L1 and there was a miss , chances are that this block was set with
 	//updated bits , clear the updated bits for next l1 access operation
-	if(strcmp(cp->name, cache_dl1->name) == 0 && repl->updated==1)
+	if((strcmp(cp->name, cache_dl1->name) == 0 || strcmp(cp->name, cache_il1->name) == 0 )&& repl->updated==1)
 	{
 		repl->updated = 0;
 	}
@@ -698,17 +756,17 @@ struct cache_blk_t *prev_blk) /*maheshma - SVC - for previous block victim in l1
 	cp->hits++;
 
 	//maheshma - Implementing SVC case 1 hit in main cache
-	if (cmd == Read) {
-		if (strcmp(cp->name, cache_dl1->name) == 0) {
+	if (cmd == Read && selective_vc) {
+		if (strcmp(cp->name, cache_dl1->name) == 0 || strcmp(cp->name, cache_il1->name) == 0) {
 			blk->hit_bit = 1;
 			blk->sticky_bit = 1;
 		}
 
 		/*maheshma - case 2*/
-		if (strcmp(cp->name, cache_vc->name) == 0) {
+		if (strcmp(cp->name, cache_dvc->name) == 0 || strcmp(cp->name, cache_ivc->name) == 0) {
 			if (prev_blk->sticky_bit == 0) {
 				move(*repl_addr, blk, cache_vc);
-				move(addr, prev_blk, cache_dl1);
+				move(addr, prev_blk, cache_l1);
 				prev_blk->sticky_bit = 1;
 				prev_blk->hit_bit = 1;
 
@@ -718,7 +776,7 @@ struct cache_blk_t *prev_blk) /*maheshma - SVC - for previous block victim in l1
 					prev_blk->updated=1;// need to update so that after call back tag is not replaced and/or moved to VC.
 				} else {
 					move(*repl_addr, blk, cache_vc);
-					move(addr, prev_blk, cache_dl1);
+					move(addr, prev_blk, cache_l1);
 					prev_blk->sticky_bit = 1;
 					prev_blk->hit_bit = 0;
 
@@ -727,7 +785,7 @@ struct cache_blk_t *prev_blk) /*maheshma - SVC - for previous block victim in l1
 		}
 
 		/*maheshma - case 3*/
-		if (prev_blk && strcmp(cp->name, cache_dl2->name) == 0) {
+		if (strcmp(cp->name, cache_dl2->name) == 0 || strcmp(cp->name, cache_il2->name) == 0) {
 			if (prev_blk->sticky_bit == 0) {
 				//move alpha to victim cache
 				// Need to find the right block in vc first
@@ -736,7 +794,7 @@ struct cache_blk_t *prev_blk) /*maheshma - SVC - for previous block victim in l1
 				move(*repl_addr, blk_vc, cache_vc);
 				//transfer beta to main cache
 				//should have right blk pointer from main cache in prev_blk
-				move(addr, prev_blk, cache_dl1);
+				move(addr, prev_blk, cache_l1);
 				prev_blk->sticky_bit = 1;
 				prev_blk->hit_bit = 1;
 
@@ -747,6 +805,7 @@ struct cache_blk_t *prev_blk) /*maheshma - SVC - for previous block victim in l1
 					md_addr_t repl_set = CACHE_SET(cache_vc, addr);
 					struct cache_blk_t *blk_vc =
 							cache_vc->sets[repl_set].way_tail;
+					//shd write back after this
 					move(addr, blk_vc, cache_vc);
 					prev_blk->sticky_bit = 0;
 					prev_blk->updated=1;// need to update so that after call back tag is not replaced and/or moved to VC.
@@ -756,10 +815,11 @@ struct cache_blk_t *prev_blk) /*maheshma - SVC - for previous block victim in l1
 					md_addr_t repl_set = CACHE_SET(cache_vc, *repl_addr);
 					struct cache_blk_t *blk_vc =
 							cache_vc->sets[repl_set].way_tail;
+					//shd write back after this
 					move(*repl_addr, blk_vc, cache_vc);
 					//transfer beta to main cache
 					//should have right blk pointer from main cache in prev_blk
-					move(addr, prev_blk, cache_dl1);
+					move(addr, prev_blk, cache_l1);
 					prev_blk->sticky_bit = 1;
 					prev_blk->hit_bit = 0;
 

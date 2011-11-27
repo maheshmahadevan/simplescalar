@@ -305,8 +305,11 @@ cache_flush_addr(struct cache_t *cp,	/* cache instance to flush */
 		 tick_t now);		/* time of cache flush */
 
 /*HW3: */
-/*victim cache*/
-struct cache_t *cache_vc;
+/*data victim cache*/
+struct cache_t *cache_dvc;
+
+/*insn victim cache*/
+struct cache_t *cache_ivc;
 
 /* level 1 data cache, entry level data cache */
 struct cache_t *cache_dl1;
@@ -316,6 +319,8 @@ struct cache_t *cache_dl2;
 
 /* level 1 insn cache, entry level data cache */
 struct cache_t *cache_il1;
+/* maheshma - level 2 insn cache, entry level data cache */
+struct cache_t *cache_il2;
 
 
 
