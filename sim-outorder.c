@@ -454,7 +454,7 @@ dl1_access_fn(enum mem_cmd cmd,		/* access cmd, Read or Write */
 	unsigned int lat;
 
 /*HW3: */
-	/*Only need to access Victim cache when need to read and during WriteBack*/
+	/*Only need to access Victim cache when need to read and not during WriteBack*/
 	if (cache_dvc && cmd == Read )
 	{
 		//maheshma - modified
@@ -520,7 +520,7 @@ il1_access_fn(enum mem_cmd cmd,		/* access cmd, Read or Write */
 {
 	unsigned int lat;
 
-	/*Only need to access Victim cache when need to read and during WriteBack*/
+	/*Only need to access Victim cache when need to read and not during WriteBack*/
 	if (cache_ivc && cmd == Read )
 	{
 		//maheshma - modified

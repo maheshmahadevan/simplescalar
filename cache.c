@@ -635,7 +635,7 @@ struct cache_blk_t *prev_blk) /*maheshma - SVC - for previous block victim in l1
 		//maheshma - SVC code - updated args list to send kicked out address to block access function so it can be sent to lower
 		//level cache_access calls
 		lat += cp->blk_access_fn(Read, CACHE_BADDR(cp, addr), cp->bsize, victim,
-				now + lat, &kick_out_data_addr);
+			now + lat, &kick_out_data_addr);
 	}
 
 	//maheshma - implementing case 3 for dl2 misses as well - test now to see if miss numbers reduce..
@@ -652,6 +652,7 @@ struct cache_blk_t *prev_blk) /*maheshma - SVC - for previous block victim in l1
 					move(addr, prev_blk, cache_l1);
 					prev_blk->sticky_bit = 1;
 					prev_blk->hit_bit = 1;
+					prev_blk->updated=1;
 
 				} else {
 					//maheshma - no need for this block as there is no blk or hit bit in main memory all hit bits are 0
@@ -712,6 +713,7 @@ struct cache_blk_t *prev_blk) /*maheshma - SVC - for previous block victim in l1
 		update_way_list(&cache_vc->sets[set_vc], repl_vc, Head);
 
 		// maheshma - need to write back.. before replacing
+		/* write back replaced block data- shouldnt be a big deal to not do this  as the WB on VC is done on miss to both main cache and VC*/
 
 		repl_vc->tag = tag_vc;
 		repl_vc->status = CACHE_BLK_VALID;
@@ -769,6 +771,7 @@ struct cache_blk_t *prev_blk) /*maheshma - SVC - for previous block victim in l1
 				move(addr, prev_blk, cache_l1);
 				prev_blk->sticky_bit = 1;
 				prev_blk->hit_bit = 1;
+				prev_blk->updated = 1;
 
 			} else {
 				if (blk->hit_bit == 0) {
@@ -779,6 +782,7 @@ struct cache_blk_t *prev_blk) /*maheshma - SVC - for previous block victim in l1
 					move(addr, prev_blk, cache_l1);
 					prev_blk->sticky_bit = 1;
 					prev_blk->hit_bit = 0;
+					prev_blk->updated =1;
 
 				}
 			}
@@ -797,6 +801,7 @@ struct cache_blk_t *prev_blk) /*maheshma - SVC - for previous block victim in l1
 				move(addr, prev_blk, cache_l1);
 				prev_blk->sticky_bit = 1;
 				prev_blk->hit_bit = 1;
+				prev_blk->updated=1;
 
 			} else {
 				if (blk->hit_bit == 0) {
@@ -822,6 +827,7 @@ struct cache_blk_t *prev_blk) /*maheshma - SVC - for previous block victim in l1
 					move(addr, prev_blk, cache_l1);
 					prev_blk->sticky_bit = 1;
 					prev_blk->hit_bit = 0;
+					prev_blk->updated=1;
 
 				}
 			}
@@ -1021,7 +1027,7 @@ void move(md_addr_t addr/*Address to be moved*/, struct cache_blk_t *blk,
 
 	blk->tag = tag;
 	blk->status = CACHE_BLK_VALID;
-	blk->updated = 1;
+	//blk->updated = 1;
 	update_way_list(&(cp->sets[set]), blk, Head);
 
 	return;
