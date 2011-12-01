@@ -426,15 +426,100 @@ mem_access_latency(int blk_sz)		/* block size accessed */
 }
 
 /*HW3: */
-/*victim cache handler*/
+/*data victim cache handler*/
 static unsigned int
-vc_access_fn(enum mem_cmd cmd,
+dvc_access_fn(enum mem_cmd cmd,
              md_addr_t baddr,
              int bsize,
              struct cache_blk_t *blk,
              tick_t now,				/* time of access */
              md_addr_t* prev_addr)		/* maheshma - address of prev level cache*/
 {
+	unsigned int lat;
+
+	if(cmd==Read)
+	{
+		return 0;
+	}
+
+	if(cmd==Write)
+	{
+		if (cache_dl2)
+			{
+				/* access next level of data cache hierarchy */
+				//maheshma - sending address and block from higher level cache to lower cache for comparison
+				lat = cache_access(cache_dl2, cmd, baddr, NULL, bsize,
+				                   /* now */now, /* pudata */NULL, /* repl addr */prev_addr,blk);
+				if (cmd == Read)
+					return lat;
+				else
+				{
+					/* FIXME: unlimited write buffers */
+					return 0;
+				}
+			}
+			else
+			{
+				/* access main memory */
+				if (cmd == Read)
+					return mem_access_latency(bsize);
+				else
+				{
+					/* FIXME: unlimited write buffers */
+					return 0;
+				}
+			}
+	}
+
+	return 0;
+}
+
+/*HW3: */
+/*insn victim cache handler*/
+static unsigned int
+ivc_access_fn(enum mem_cmd cmd,
+             md_addr_t baddr,
+             int bsize,
+             struct cache_blk_t *blk,
+             tick_t now,				/* time of access */
+             md_addr_t* prev_addr)		/* maheshma - address of prev level cache*/
+{
+	unsigned int lat;
+
+	if(cmd==Read)
+	{
+		return 0;
+	}
+
+	if(cmd==Write)
+	{
+		if (cache_il2)
+			{
+				/* access next level of data cache hierarchy */
+				//maheshma - sending address and block from higher level cache to lower cache for comparison
+				lat = cache_access(cache_il2, cmd, baddr, NULL, bsize,
+				                   /* now */now, /* pudata */NULL, /* repl addr */prev_addr,blk);
+				if (cmd == Read)
+					return lat;
+				else
+				{
+					/* FIXME: unlimited write buffers */
+					return 0;
+				}
+			}
+			else
+			{
+				/* access main memory */
+				if (cmd == Read)
+					return mem_access_latency(bsize);
+				else
+				{
+					/* FIXME: unlimited write buffers */
+					return 0;
+				}
+			}
+	}
+
 	return 0;
 }
 
@@ -1096,7 +1181,7 @@ sim_check_options(struct opt_odb_t *odb,        /* options database */
 			strcpy(str,"data_");
 			strcat(str,name);
 			cache_dvc = cache_create(str, nsets, bsize, FALSE, 0, assoc,
-					cache_char2policy(c), vc_access_fn, cache_dl1_lat);
+					cache_char2policy(c), dvc_access_fn, cache_dl1_lat);
 		}
 		                        /* is the level 2 D-cache defined? */
 		                        if (!mystricmp(cache_dl2_opt, "none"))
@@ -1186,7 +1271,7 @@ sim_check_options(struct opt_odb_t *odb,        /* options database */
 			strcpy(str,"insn_");
 			strcat(str,name);
 			cache_ivc = cache_create(str, nsets, bsize, FALSE, 0,
-					assoc, cache_char2policy(c), vc_access_fn, cache_dl1_lat);
+					assoc, cache_char2policy(c), ivc_access_fn, cache_dl1_lat);
 		}
 
 				/* is the level 2 D-cache defined? */
