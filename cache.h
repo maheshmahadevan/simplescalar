@@ -134,6 +134,8 @@ struct cache_blk_t
   int hit_bit;
   int sticky_bit;
   int updated; //to check if this block has been already replaced.
+  int dirty_bit_set;//to check if we need to set CACHE_BLK_DIRTY on this block or not
+  enum mem_cmd prev_cache_cmd; // holder to pass cmd from prev cache to current cache
 };
 
 /* cache set definition (one or more blocks sharing the same set index) */
@@ -326,5 +328,8 @@ struct cache_t *cache_il2;
 
 /*maheshma - SVC code - method to interchange blocks between 2 caches*/
 void move(md_addr_t addr/*Address to be moved*/, struct cache_blk_t *blk, struct cache_t *cp /*pointer to second cache*/);
+
+/*Method to Write Back and calculate replacements on cache*/
+int writeBack(struct cache_blk_t *blk,md_addr_t set,struct cache_t *cp,int lat,tick_t now);
 
 #endif /* CACHE_H */

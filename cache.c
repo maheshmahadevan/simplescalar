@@ -364,6 +364,7 @@ cache_create(
 			blk->hit_bit = 0;
 			blk->sticky_bit = 0;
 			blk->updated = 0;
+			blk->dirty_bit_set=0;
 
 			/* insert cache block into set hash table */
 			if (cp->hsize)
@@ -610,37 +611,13 @@ struct cache_blk_t *prev_blk) /*maheshma - SVC - for previous block victim in l1
 	cp->last_tagset = 0;
 	cp->last_blk = NULL;
 
-	/* write back replaced block data */
-	if (repl->status & CACHE_BLK_VALID)
-	{
-		cp->replacements++;
 
-		if (repl_addr)
-			*repl_addr = CACHE_MK_BADDR(cp, repl->tag, set);
-
-		/* don't replace the block until outstanding misses are satisfied */
-		lat += BOUND_POS(repl->ready - now);
-
-		/* stall until the bus to next level of memory is available */
-		lat += BOUND_POS(cp->bus_free - (now + lat));
-
-		/* track bus resource usage */
-		cp->bus_free = MAX(cp->bus_free, (now + lat)) + 1;
-
-		if (repl->status & CACHE_BLK_DIRTY)
-		{
-			/* write back the cache block */
-			cp->writebacks++;
-			lat += cp->blk_access_fn(Write, CACHE_MK_BADDR(cp, repl->tag, set),
-					cp->bsize, repl, now + lat, NULL);
-
-		}
-	}
 
 	/*HW3*/
 	md_addr_t kick_out_data_addr = CACHE_MK_BADDR(cp, repl->tag, set);
 	//maheshma - store the victim block copy
 	struct cache_blk_t *victim = repl;
+	victim->prev_cache_cmd = cmd;
 	//maheshma - Updated for SVC , will call block_access_fn with Kicked out block in case of dl1 caches.
 	if (strcmp(cp->name, cache_dl1->name) == 0
 			|| strcmp(cp->name, cache_dl2->name) == 0
@@ -662,6 +639,8 @@ struct cache_blk_t *prev_blk) /*maheshma - SVC - for previous block victim in l1
 			// Need to find the right block in vc first
 			md_addr_t repl_set = CACHE_SET(cache_vc, *repl_addr);
 			struct cache_blk_t *blk_vc = cache_vc->sets[repl_set].way_tail;
+			//shd writeback
+			lat=writeBack(blk_vc,repl_set,cache_vc,lat,now);
 			move(*repl_addr, blk_vc, cache_vc);
 			//VC block should have the status from main cache block
 			blk_vc->status = prev_blk->status;
@@ -675,15 +654,21 @@ struct cache_blk_t *prev_blk) /*maheshma - SVC - for previous block victim in l1
 			prev_blk->updated = 1;
 
 		} else {
-			//maheshma - no need for this block as there is no blk or hit bit in main memory all hit bits are 0
+			//maheshma - no need to check hit bits as there is no blk or hit bit in main memory all hit bits are 0
 			//transfer beta to victim cache
 			// Need to find the right block in vc first
 			md_addr_t repl_set = CACHE_SET(cache_vc, addr);
 			struct cache_blk_t *blk_vc = cache_vc->sets[repl_set].way_tail;
 			//shd write back after this
+			lat=writeBack(blk_vc,repl_set,cache_vc,lat,now);
 			move(addr, blk_vc, cache_vc);
 			//VC blk should have valid status as this is new block.
 			blk_vc->status = CACHE_BLK_VALID;
+			//SVC - need to set the VC block to dirty if it was store operation in L1 cache
+			if (prev_blk->prev_cache_cmd == Write) {
+				blk_vc->status |= CACHE_BLK_DIRTY;
+				prev_blk->dirty_bit_set = 1;
+			}
 			prev_blk->sticky_bit = 0;
 			prev_blk->updated = 1; // need to update so that after call back tag is not replaced and/or moved to VC.
 			//} //maheshma - commenting this part as there is no hit bit in main memory
@@ -691,7 +676,33 @@ struct cache_blk_t *prev_blk) /*maheshma - SVC - for previous block victim in l1
 		}
 	}
 
-	//Need to update
+	/* write back replaced block data */
+		if (repl->status & CACHE_BLK_VALID)
+		{
+			cp->replacements++;
+
+			if (repl_addr)
+				*repl_addr = CACHE_MK_BADDR(cp, repl->tag, set);
+
+			/* don't replace the block until outstanding misses are satisfied */
+			lat += BOUND_POS(repl->ready - now);
+
+			/* stall until the bus to next level of memory is available */
+			lat += BOUND_POS(cp->bus_free - (now + lat));
+
+			/* track bus resource usage */
+			cp->bus_free = MAX(cp->bus_free, (now + lat)) + 1;
+
+			//SVC- added condition to check if the block is already replaced there is no need for WB to avoid duplicate WBs between L1 and VC
+			if ((repl->status & CACHE_BLK_DIRTY) && repl->updated ==0)
+			{
+				/* write back the cache block */
+				cp->writebacks++;
+				lat += cp->blk_access_fn(Write, CACHE_MK_BADDR(cp, repl->tag, set),
+						cp->bsize, repl, now + lat, NULL);
+
+			}
+		}
 	//maheshma - Quote to self this is where the swap of blocks take place...
 	/* update block tags */
 	//Do not modify the address if it is L1 and victim cache because it's already handled.
@@ -725,29 +736,7 @@ struct cache_blk_t *prev_blk) /*maheshma - SVC - for previous block victim in l1
 		// maheshma - need to write back.. before replacing
 		/* write back replaced block data- shouldnt be a big deal to not do this  as the WB on VC is done on miss to both main cache and VC - which is updated ==0*/
 
-		if (repl_vc->status & CACHE_BLK_VALID)
-		{
-			cache_vc->replacements++;
-
-			/* don't replace the block until outstanding misses are satisfied */
-			lat += BOUND_POS(repl_vc->ready - now);
-
-			/* stall until the bus to next level of memory is available */
-			lat += BOUND_POS(cache_vc->bus_free - (now + lat));
-
-			/* track bus resource usage */
-			cache_vc->bus_free = MAX(cache_vc->bus_free, (now + lat)) + 1;
-
-			if (repl_vc->status & CACHE_BLK_DIRTY)
-			{
-				/* write back the cache block */
-				cache_vc->writebacks++;
-				lat += cache_vc->blk_access_fn(Write,
-						CACHE_MK_BADDR(cache_vc, repl_vc->tag, set),
-						cache_vc->bsize, repl_vc, now + lat, NULL);
-
-			}
-		}
+		lat=writeBack(repl_vc,set_vc,cache_vc,lat,now);
 
 		repl_vc->tag = tag_vc;
 		repl_vc->status = CACHE_BLK_VALID;
@@ -763,7 +752,10 @@ struct cache_blk_t *prev_blk) /*maheshma - SVC - for previous block victim in l1
 	}
 
 	/* update dirty status */
-	if (cmd == Write)
+	//SVC updated to check if this is a special case of prediction algo
+	//when block was not moved from VC to L1 cache and dirty bit was
+	//already set on the VC block , so no need to set it on L1 cache blk
+	if (cmd == Write && repl->dirty_bit_set==0)
 		repl->status |= CACHE_BLK_DIRTY;
 
 	/* get user block data, if requested and it exists */
@@ -780,8 +772,9 @@ struct cache_blk_t *prev_blk) /*maheshma - SVC - for previous block victim in l1
 	//maheshma - if cache is L1 and there was a miss , chances are that this block was set with
 	//updated bits , clear the updated bits for next l1 access operation
 	if ((strcmp(cp->name, cache_dl1->name) == 0
-			|| strcmp(cp->name, cache_il1->name) == 0) && repl->updated == 1) {
+			|| strcmp(cp->name, cache_il1->name) == 0) && (repl->updated == 1 || repl->dirty_bit_set ==1)) {
 		repl->updated = 0;
+		repl->dirty_bit_set =0;
 	}
 	/* return latency of the operation */
 	return lat;
@@ -831,6 +824,12 @@ struct cache_blk_t *prev_blk) /*maheshma - SVC - for previous block victim in l1
 				if (blk->hit_bit == 0) {
 					prev_blk->sticky_bit = 0;
 					prev_blk->updated = 1; // need to update so that after call back tag is not replaced and/or moved to VC.
+					//SVC - need to set the VC block to dirty if it was store operation in L1 cache
+					if(prev_blk->prev_cache_cmd == Write)
+					{
+						blk->status |= CACHE_BLK_DIRTY;
+						prev_blk->dirty_bit_set =1;
+					}
 				} else {
 					move(*repl_addr, blk, cache_vc);
 					move(addr, prev_blk, cache_l1);
@@ -854,6 +853,8 @@ struct cache_blk_t *prev_blk) /*maheshma - SVC - for previous block victim in l1
 				// Need to find the right block in vc first
 				md_addr_t repl_set = CACHE_SET(cache_vc, *repl_addr);
 				struct cache_blk_t *blk_vc = cache_vc->sets[repl_set].way_tail;
+				//do we need to WriteBack?
+				lat=writeBack(blk_vc,repl_set,cache_vc,lat,now);
 				move(*repl_addr, blk_vc, cache_vc);
 				//VC block should have the status from main cache block
 				blk_vc->status = prev_blk->status;
@@ -874,9 +875,15 @@ struct cache_blk_t *prev_blk) /*maheshma - SVC - for previous block victim in l1
 					struct cache_blk_t *blk_vc =
 							cache_vc->sets[repl_set].way_tail;
 					//shd write back after this
+					lat=writeBack(blk_vc,repl_set,cache_vc,lat,now);
 					move(addr, blk_vc, cache_vc);
 					//VC block should have valid status
 					blk_vc->status = CACHE_BLK_VALID;
+					//SVC - need to set the VC block to dirty if it was store operation in L1 cache
+					if (prev_blk->prev_cache_cmd == Write) {
+						blk_vc->status |= CACHE_BLK_DIRTY;
+						prev_blk->dirty_bit_set = 1;
+					}
 					prev_blk->sticky_bit = 0;
 					prev_blk->updated = 1; // need to update so that after call back tag is not replaced and/or moved to VC.
 				} else {
@@ -886,6 +893,7 @@ struct cache_blk_t *prev_blk) /*maheshma - SVC - for previous block victim in l1
 					struct cache_blk_t *blk_vc =
 							cache_vc->sets[repl_set].way_tail;
 					//shd write back after this
+					lat=writeBack(blk_vc,repl_set,cache_vc,lat,now);
 					move(*repl_addr, blk_vc, cache_vc);
 					//VC block should have the status from main cache block
 					blk_vc->status = prev_blk->status;
@@ -1089,8 +1097,8 @@ tick_t now) /* time of cache flush */
 }
 
 /*maheshma - SVC code - method to interchange blocks between 2 caches*/
-void move(md_addr_t addr/*Address to be moved*/, struct cache_blk_t *blk,
-		struct cache_t *cp /*pointer to second cache*/) {
+void move(md_addr_t addr/*Address to be moved*/, struct cache_blk_t *blk/*Block on which tag is to be updated*/,
+		struct cache_t *cp /*cache where it is to be moved*/) {
 	md_addr_t tag = CACHE_TAG(cp, addr);
 	md_addr_t set = CACHE_SET(cp, addr);
 
@@ -1102,3 +1110,30 @@ void move(md_addr_t addr/*Address to be moved*/, struct cache_blk_t *blk,
 	return;
 }
 
+/*Method to Write Back and calculate replacements on cache*/
+int writeBack(struct cache_blk_t *blk,md_addr_t set,struct cache_t *cp,int lat,tick_t now)
+{
+	if (blk->status & CACHE_BLK_VALID)
+	{
+		cp->replacements++;
+
+		/* don't replace the block until outstanding misses are satisfied */
+		lat += BOUND_POS(blk->ready - now);
+
+		/* stall until the bus to next level of memory is available */
+		lat += BOUND_POS(cp->bus_free - (now + lat));
+
+		/* track bus resource usage */
+		cp->bus_free = MAX(cp->bus_free, (now + lat)) + 1;
+
+		if (blk->status & CACHE_BLK_DIRTY)
+		{
+			/* write back the cache block */
+			cp->writebacks++;
+			lat += cp->blk_access_fn(Write, CACHE_MK_BADDR(cp, blk->tag, set),
+					cp->bsize, blk, now + lat, NULL);
+
+		}
+	}
+	return lat;
+}
